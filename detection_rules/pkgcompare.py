@@ -16,6 +16,7 @@ from .ghwrap import GithubClient
 from .main import root
 from .misc import client_error
 from .rule_loader import RuleCollection
+from .utils import get_etc_path
 
 
 # NOTE these two functions could go in utils.py if they use a different error type
@@ -42,11 +43,15 @@ def pkgcompare_group():
 
 @pkgcompare_group.command('compare-package')
 @click.option('--tag', required=True, type=str, help='Github repo tag to use for package comparison')
+@click.option('--outfile', '-o', type=Path, default=get_etc_path("diffs.json"), help='File to save diffs to')
 @click.option('--cdn-url', '-u', default='https://epr.elastic.co/package/security_detection_engine/8.3.1/',
               type=str, help='CDN URL to load rules package')
+@click.option('--print-diff', '-p', is_flag=True, help='Print diffs to command line')
 @click.option('--repo', '-r', default='elastic/detection-rules', help='Override the elastic/detection-rules repo')
 @click.option('--skip-validation', '-s', is_flag=True, help='Bypass schema validation for Github repo rules')
-def compare_package(tag: str, cdn_url: str, repo: str, skip_validation: bool):
+@click.option('--summarized-output', is_flag=True, help='If rule exists in only one package only output rule UUID')
+def compare_package(tag: str, outfile: Path, cdn_url: str, print_diff: bool, repo: str,
+                    skip_validation: bool, summarized_output: bool):
     rules = RuleCollection()
     # Public repo, no token needed
     gh_client = GithubClient()
@@ -100,4 +105,19 @@ def compare_package(tag: str, cdn_url: str, repo: str, skip_validation: bool):
                         diffs[uuid] = result
                     del tag_only[uuid]
 
-    raise client_error("Not implemented.")
+    if summarized_output:
+        tag_only = list(tag_only.keys())
+        cdn_only = list(cdn_only.keys())
+
+    # Output Deltas
+    tag_json = json.dumps(tag_only, default=str)
+    cdn_json = json.dumps(cdn_only, default=str)
+    diffs_json = json.dumps(diffs, default=str)
+    result_dict = {"cdn_version": package_version,
+                   "tag_only_rules": tag_json,
+                   "cdn_only_rules": cdn_json,
+                   "diffs": diffs_json}
+    result = json.dumps(result_dict, default=str) + "\n"
+    outfile.write_text(result)
+    if print_diff:
+        print(json.dumps(result_dict, default=str))
