@@ -178,6 +178,7 @@ class BaseRuleData(MarshmallowDataclassMixin, StackCompatMixin):
     actions: Optional[list]
     author: List[str]
     building_block_type: Optional[str]
+    correlations: Optional[definitions.Correlations]
     description: str
     enabled: Optional[bool]
     exceptions_list: Optional[list]
@@ -277,6 +278,8 @@ class DataValidator:
         self.is_elastic_rule = is_elastic_rule
         self.note = note
         self.setup = setup
+        self.correlations = extras.get("correlations")
+        self.threat = extras.get("threat")
 
         self._setup_in_note = False
 
@@ -296,6 +299,10 @@ class DataValidator:
     @cached_property
     def skip_validate_note(self) -> bool:
         return os.environ.get('DR_BYPASS_NOTE_VALIDATION_AND_PARSE') is not None
+
+    def validate_correlations(self):
+        if self.correlations and not self.threat:
+            raise ValidationError("Correlations is invalid. Threat information missing.")
 
     def validate_note(self):
         if self.skip_validate_note or not self.note:
@@ -886,6 +893,7 @@ class TOMLRuleContents(BaseRuleContents, MarshmallowDataclassMixin):
         metadata: RuleMeta = value["metadata"]
 
         data.validate_query(metadata)
+        data.data_validator.validate_correlations()
         data.data_validator.validate_note()
 
     def to_dict(self, strip_none_values=True) -> dict:

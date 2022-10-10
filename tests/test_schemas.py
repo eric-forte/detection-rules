@@ -236,6 +236,76 @@ class TestSchemas(unittest.TestCase):
                     process where process.pid == "some string field"
             """)
 
+    def test_correlations_validation(self):
+        base_fields = {
+            "author": ["Elastic"],
+            "description": "test description",
+            "index": ["filebeat-*"],
+            "language": "eql",
+            "license": "Elastic License v2",
+            "name": "test rule",
+            "query": """
+                process where process.name == "cmd.exe"
+            """,
+            "risk_score": 21,
+            "rule_id": str(uuid.uuid4()),
+            "severity": "low",
+            "type": "eql"
+        }
+        threat = [{'framework': 'MITRE ATT&CK',
+                   'tactic': {'id': 'TA0011',
+                              'name': 'Command and Control',
+                              'reference': 'https://attack.mitre.org/tactics/TA0011/'},
+                   'technique': [{'id': 'T1572',
+                                  'name': 'Protocol Tunneling',
+                                  'reference': 'https://attack.mitre.org/techniques/T1572/'}]}]
+
+        def build_rule(data: dict):
+            metadata = {
+                "creation_date": "1970/01/01",
+                "updated_date": "1970/01/01",
+                "min_stack_version": load_current_package_version()
+            }
+            obj = {"metadata": metadata, "rule": data}
+            return TOMLRuleContents.from_dict(obj)
+
+        # Base case: no threat data, no correlations set
+        data = base_fields.copy()
+        build_rule(data)
+
+        # First test case: threat data, no correlations set
+        data = base_fields.copy()
+        data["threat"] = threat.copy()
+        build_rule(data)
+
+        # Second test case: threat data, valid correlations set
+        # This is a duplicate of the validation
+        data = base_fields.copy()
+        data["threat"] = threat.copy()
+        data["correlations"] = [str(uuid.uuid4())]
+        build_rule(data)
+
+        # Third test case: no threat data, valid correlations set
+        with self.assertRaises(ValidationError):
+            data = base_fields.copy()
+            data["correlations"] = [str(uuid.uuid4())]
+            build_rule(data)
+
+        # Fourth test case: no threat data, invalid correlations set
+        # This test case is a duplicate of marshmellow dataclass validation
+        with self.assertRaises(ValidationError):
+            data = base_fields.copy()
+            data["correlations"] = [str("I am Invalid")]
+            build_rule(data)
+
+        # Fifth test case: threat data, invalid correlations set
+        # This test case is a duplicate of marshmellow dataclass validation
+        with self.assertRaises(ValidationError):
+            data = base_fields.copy()
+            data["threat"] = threat.copy()
+            data["correlations"] = [str("I am Invalid")]
+            build_rule(data)
+
 
 class TestVersionLockSchema(unittest.TestCase):
     """Test that the version lock has proper entries."""
